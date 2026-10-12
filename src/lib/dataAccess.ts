@@ -84,66 +84,101 @@ function mapRowToHOF(row: any): HallOfFameEntry {
 }
 
 export async function fetchCategories(): Promise<Category[]> {
-  const { data, error } = await supabase
-    .from('categories')
-    .select('*')
-    .order('sort_order');
-  if (error) throw error;
-  return (data || []).map(mapRowToCategory);
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from('categories')
+      .select('*')
+      .order('sort_order');
+    if (error) throw error;
+    return (data || []).map(mapRowToCategory);
+  } catch (err) {
+    console.warn('Failed to fetch categories from Supabase:', err);
+    return [];
+  }
 }
 
 export async function fetchCases(): Promise<CourtCase[]> {
-  const { data, error } = await supabase
-    .from('cases')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data || []).map(mapRowToCase);
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from('cases')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapRowToCase);
+  } catch (err) {
+    console.warn('Failed to fetch cases from Supabase:', err);
+    return [];
+  }
 }
 
 export async function fetchComments(): Promise<Comment[]> {
-  const { data, error } = await supabase
-    .from('comments')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data || []).map(mapRowToComment);
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from('comments')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapRowToComment);
+  } catch (err) {
+    console.warn('Failed to fetch comments from Supabase:', err);
+    return [];
+  }
 }
 
 export async function fetchNotifications(): Promise<Notification[]> {
-  const { data, error } = await supabase
-    .from('notifications')
-    .select('*')
-    .order('created_at', { ascending: false });
-  if (error) throw error;
-  return (data || []).map(mapRowToNotification);
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from('notifications')
+      .select('*')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapRowToNotification);
+  } catch (err) {
+    console.warn('Failed to fetch notifications from Supabase:', err);
+    return [];
+  }
 }
 
 export async function fetchHallOfFame(): Promise<HallOfFameEntry[]> {
-  const { data, error } = await supabase
-    .from('hall_of_fame')
-    .select('*')
-    .order('sort_order');
-  if (error) throw error;
-  return (data || []).map(mapRowToHOF);
+  if (!supabase) return [];
+  try {
+    const { data, error } = await supabase
+      .from('hall_of_fame')
+      .select('*')
+      .order('sort_order');
+    if (error) throw error;
+    return (data || []).map(mapRowToHOF);
+  } catch (err) {
+    console.warn('Failed to fetch hall of fame from Supabase:', err);
+    return [];
+  }
 }
 
 export async function castVoteInDB(caseId: string, side: 'for' | 'against'): Promise<void> {
-  const updates: Record<string, number> = {};
-  if (side === 'for') updates.votes_for = 1;
-  else updates.votes_against = 1;
+  if (!supabase) return;
+  try {
+    const updates: Record<string, number> = {};
+    if (side === 'for') updates.votes_for = 1;
+    else updates.votes_against = 1;
 
-  const { error: voteError } = await supabase.from('votes').insert({
-    case_id: caseId,
-    side,
-  });
-  if (voteError) throw voteError;
+    const { error: voteError } = await supabase.from('votes').insert({
+      case_id: caseId,
+      side,
+    });
+    if (voteError) throw voteError;
 
-  const { error: caseError } = await supabase.rpc('increment_vote', {
-    p_case_id: caseId,
-    p_column: side === 'for' ? 'votes_for' : 'votes_against',
-  });
-  if (caseError) throw caseError;
+    const { error: caseError } = await supabase.rpc('increment_vote', {
+      p_case_id: caseId,
+      p_column: side === 'for' ? 'votes_for' : 'votes_against',
+    });
+    if (caseError) throw caseError;
+  } catch (err) {
+    console.warn('Failed to record vote in Supabase:', err);
+  }
 }
 
 export async function addCommentToDB(
@@ -152,46 +187,77 @@ export async function addCommentToDB(
   side: 'prosecution' | 'defence' | 'neutral'
 ): Promise<Comment> {
   const newId = `cm-${Date.now()}`;
-  const { data, error } = await supabase
-    .from('comments')
-    .insert({
-      id: newId,
-      case_id: caseId,
-      author: 'You',
-      avatar: '🧑🏾‍⚖️',
-      text,
-      side,
-      likes: 0,
-      replies: 0,
-      agrees: 0,
-      disagrees: 0,
-    })
-    .select('*')
-    .single();
-  if (error) throw error;
+  const fallbackComment: Comment = {
+    id: newId,
+    caseId,
+    author: 'You',
+    avatar: '🧑🏾‍⚖️',
+    text,
+    side,
+    likes: 0,
+    replies: 0,
+    agrees: 0,
+    disagrees: 0,
+    createdAt: new Date().toISOString(),
+  };
 
-  const { error: caseError } = await supabase.rpc('increment_argument_count', {
-    p_case_id: caseId,
-  });
-  if (caseError) throw caseError;
+  if (!supabase) return fallbackComment;
 
-  return mapRowToComment(data);
+  try {
+    const { data, error } = await supabase
+      .from('comments')
+      .insert({
+        id: newId,
+        case_id: caseId,
+        author: 'You',
+        avatar: '🧑🏾‍⚖️',
+        text,
+        side,
+        likes: 0,
+        replies: 0,
+        agrees: 0,
+        disagrees: 0,
+      })
+      .select('*')
+      .single();
+    if (error) throw error;
+
+    const { error: caseError } = await supabase.rpc('increment_argument_count', {
+      p_case_id: caseId,
+    });
+    if (caseError) throw caseError;
+
+    return mapRowToComment(data);
+  } catch (err) {
+    console.warn('Failed to record comment in Supabase:', err);
+    return fallbackComment;
+  }
 }
 
 export async function likeCommentInDB(commentId: string, isLiked: boolean): Promise<void> {
-  const { error } = await supabase.rpc('adjust_comment_likes', {
-    p_comment_id: commentId,
-    p_delta: isLiked ? -1 : 1,
-  });
-  if (error) throw error;
+  if (!supabase) return;
+  try {
+    const { error } = await supabase.rpc('adjust_comment_likes', {
+      p_comment_id: commentId,
+      p_delta: isLiked ? -1 : 1,
+    });
+    if (error) throw error;
+  } catch (err) {
+    console.warn('Failed to adjust comment likes in Supabase:', err);
+  }
 }
 
 export async function agreeCommentInDB(commentId: string, isAgreed: boolean): Promise<void> {
-  const { error } = await supabase.rpc('adjust_comment_agrees', {
-    p_comment_id: commentId,
-    p_delta: isAgreed ? -1 : 1,
-  });
-  if (error) throw error;
+  if (!supabase) return;
+  try {
+    const { error } = await supabase.rpc('adjust_comment_agrees', {
+      p_comment_id: commentId,
+      p_delta: isAgreed ? -1 : 1,
+    });
+    if (error) throw error;
+  } catch (err) {
+    console.warn('Failed to adjust comment agrees in Supabase:', err);
+  }
 }
 
 export async function submitCaseToDB(params: {
@@ -204,29 +270,35 @@ export async function submitCaseToDB(params: {
   const caseNum = `#${String(900 + Math.floor(Math.random() * 999)).padStart(5, '0')}`;
   const caseId = `c-${Date.now()}`;
 
-  const { error } = await supabase.from('cases').insert({
-    id: caseId,
-    case_number: caseNum,
-    category: params.category,
-    title: params.title,
-    hook: params.title.toUpperCase(),
-    story: params.story,
-    question: params.question || params.title,
-    question_type: 'who_wrong',
-    for_label: 'FOR',
-    against_label: 'AGAINST',
-    status: 'new',
-    author_name: params.anonymous ? 'Anonymous' : 'You',
-    author_anon: params.anonymous,
-    evidence: [],
-    timeline: [
-      { id: 't1', label: 'Case submitted', done: true },
-      { id: 't2', label: 'Case opened' },
-      { id: 't3', label: 'People deliberating' },
-      { id: 't4', label: 'Verdict pending' },
-    ],
-  });
-  if (error) throw error;
+  if (!supabase) return caseNum;
+
+  try {
+    const { error } = await supabase.from('cases').insert({
+      id: caseId,
+      case_number: caseNum,
+      category: params.category,
+      title: params.title,
+      hook: params.title.toUpperCase(),
+      story: params.story,
+      question: params.question || params.title,
+      question_type: 'who_wrong',
+      for_label: 'FOR',
+      against_label: 'AGAINST',
+      status: 'new',
+      author_name: params.anonymous ? 'Anonymous' : 'You',
+      author_anon: params.anonymous,
+      evidence: [],
+      timeline: [
+        { id: 't1', label: 'Case submitted', done: true },
+        { id: 't2', label: 'Case opened' },
+        { id: 't3', label: 'People deliberating' },
+        { id: 't4', label: 'Verdict pending' },
+      ],
+    });
+    if (error) throw error;
+  } catch (err) {
+    console.warn('Failed to submit case to Supabase:', err);
+  }
 
   return caseNum;
 }
