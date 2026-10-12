@@ -1,8 +1,22 @@
+/**
+ * HumanCharacter.tsx
+ *
+ * Sims-style clothed 3D characters:
+ *  - Visual body: ReadyPlayerMe avatar (readyplayer.me.glb) — has separate head, hair,
+ *    body, outfit top, outfit bottom and footwear meshes
+ *  - Animations: Xbot.glb clips (idle / walk / run) retargeted to the RPM rig via
+ *    shared Mixamo bone naming — AnimationMixer handles real mocap transitions
+ *  - Nigerian skin tones applied per character
+ *  - Vibrant outfit colours per character (Ankara-inspired palette)
+ */
+
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { useGLTF } from '@react-three/drei';
+import { useGLTF, useAnimations } from '@react-three/drei';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+
+// ─── Public types ────────────────────────────────────────────────────────────
 
 export type AnimState = 'idle' | 'walking' | 'running' | 'sitting';
 
@@ -20,192 +34,260 @@ interface HumanCharacterProps {
   position?: [number, number, number];
 }
 
-const HUMAN_MODEL_URL = '/HumanModels.glb';
+// ─── Asset URLs ──────────────────────────────────────────────────────────────
 
-type BoneMap = {
-  hips: THREE.Bone | null;
-  spine: THREE.Bone | null;
-  leftThigh: THREE.Bone | null;
-  rightThigh: THREE.Bone | null;
-  leftShin: THREE.Bone | null;
-  rightShin: THREE.Bone | null;
-  leftUpperArm: THREE.Bone | null;
-  rightUpperArm: THREE.Bone | null;
-  leftForearm: THREE.Bone | null;
-  rightForearm: THREE.Bone | null;
-};
+const RPM_URL   = '/readyplayer.me.glb';  // clothed avatar, no animations
+const XBOT_URL  = '/Xbot.glb';            // animations only (idle / walk / run)
 
-type BaseRotations = Map<THREE.Bone, number>;
+// ─── Nigerian melanin skin tones ─────────────────────────────────────────────
 
-// Nigerian skin tone variations for realistic representation
 const SKIN_TONES = [
-  '#4a291a', // Rich deep brown
-  '#5d3620', // Warm chocolate
-  '#74452a', // Bronze mocha
-  '#8c5535', // Warm amber
-  '#a26744', // Golden caramel
+  '#3b1f0e', // Deep ebony
+  '#5c2d0e', // Rich mahogany
+  '#7a3b1e', // Warm umber
+  '#9e5220', // Bronze caramel
+  '#c47a45', // Golden copper
 ];
 
-export function HumanCharacter({ externalRef, appearanceKey = '', scale = 1, position = [0, 0, 0] }: HumanCharacterProps) {
-  return (
-    <RiggedHuman
-      externalRef={externalRef}
-      appearanceKey={appearanceKey}
-      scale={scale}
-      position={position}
-    />
-  );
+// ─── Ankara-inspired outfit colour sets [top, bottom] ────────────────────────
+
+const OUTFIT_SETS: [string, string][] = [
+  ['#1b5e20', '#ff6f00'],  // Forest green + amber
+  ['#880e4f', '#1a237e'],  // Magenta + indigo
+  ['#e65100', '#1b5e20'],  // Deep orange + forest
+  ['#4a148c', '#f57f17'],  // Deep purple + gold
+  ['#006064', '#b71c1c'],  // Teal + crimson
+  ['#1565c0', '#f9a825'],  // Royal blue + sunflower
+  ['#263238', '#ff8f00'],  // Charcoal + amber
+];
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function hashKey(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) & 0xffff;
+  return Math.abs(h);
 }
 
-function RiggedHuman({ externalRef, appearanceKey = '', scale = 1, position = [0, 0, 0] }: HumanCharacterProps) {
-  const groupRef = useRef<THREE.Group>(null);
-  const stateRef = useRef<AnimState>('idle');
-  const speedRef = useRef(1);
-  const phaseRef = useRef(Math.random() * Math.PI * 2);
+/**
+ * Clone animation clips from the Xbot scene and retarget their track names so
+ * they drive the RPM skeleton.
+ *
+ * Both skeletons use identical Mixamo bone naming (LeftUpLeg, RightLeg, etc.)
+ * so "retargeting" here is simply ensuring the clip references root correctly.
+ *
+ * The RPM skeleton root is named "Armature" → the Xbot root is "Armature" too,
+ * so clips work as-is once we attach the mixer to the RPM scene.
+ */
+function cloneClipsForRPM(xbotClips: THREE.AnimationClip[]): THREE.AnimationClip[] {
+  return xbotClips.map((clip) => {
+    const cloned = clip.clone();
+    // Xbot tracks are relative to its Armature; RPM uses the same bone names,
+    // so we just strip any leading "Armature." from track names if present.
+    cloned.tracks = cloned.tracks.map((track) => {
+      const t = track.clone();
+      t.name = t.name.replace(/^Armature\./, '');
+      return t;
+    });
+    return cloned;
+  });
+}
 
-  const { scene } = useGLTF(HUMAN_MODEL_URL);
+// ─── Main component ───────────────────────────────────────────────────────────
 
+export function HumanCharacter({
+  externalRef,
+  appearanceKey = '',
+  scale = 1,
+  position = [0, 0, 0],
+}: HumanCharacterProps) {
+  // Load clothed avatar (visual body — no animations)
+  const { scene: rpmScene } = useGLTF(RPM_URL);
+  // Load Xbot (animations only)
+  const { animations: xbotClips } = useGLTF(XBOT_URL);
+
+  // ── Clone the RPM scene so every character is independent ───────────────
+  const clonedScene = useMemo(() => SkeletonUtils.clone(rpmScene), [rpmScene]);
+
+  // ── Retargeted animation clips ───────────────────────────────────────────
+  const retargetedClips = useMemo(
+    () => cloneClipsForRPM(xbotClips),
+    [xbotClips]
+  );
+
+  // ── useAnimations attaches an AnimationMixer to clonedScene ─────────────
+  const { actions, mixer } = useAnimations(retargetedClips, clonedScene);
+
+  // ── Per-character appearance ─────────────────────────────────────────────
+  const hash = useMemo(() => hashKey(appearanceKey), [appearanceKey]);
   const isFemale = appearanceKey.toLowerCase().includes('female');
-  const targetRigName = isFemale ? 'Woman_(Rig)' : 'Man_(Rig)';
+  const skinTone   = SKIN_TONES[hash % SKIN_TONES.length];
+  const outfitSet  = OUTFIT_SETS[hash % OUTFIT_SETS.length];
 
-  // Pick deterministic skin tone based on appearance key hash
-  const skinTone = useMemo(() => {
-    let hash = 0;
-    for (let i = 0; i < appearanceKey.length; i++) hash = (hash * 31 + appearanceKey.charCodeAt(i)) & 0xffff;
-    return SKIN_TONES[Math.abs(hash) % SKIN_TONES.length];
-  }, [appearanceKey]);
+  // ── Internal state refs ──────────────────────────────────────────────────
+  const groupRef      = useRef<THREE.Group>(null);
+  const stateRef      = useRef<AnimState>('idle');
+  const speedRef      = useRef(1);
+  const currentAction = useRef<THREE.AnimationAction | null>(null);
+  const sitPoseRef    = useRef<boolean>(false);
 
-  // Clone full hierarchy safely
-  const clonedScene = useMemo(() => SkeletonUtils.clone(scene), [scene]);
-  const activeRig = useMemo(() => clonedScene.getObjectByName(targetRigName) as THREE.Object3D | null, [clonedScene, targetRigName]);
-  const bones = useMemo(() => activeRig ? createBoneMap(activeRig) : createBoneMap(clonedScene), [activeRig, clonedScene]);
-  const baseRotations = useMemo(() => captureBaseRotations(bones), [bones]);
-  const baseHipY = useRef(0);
-
+  // ── Apply skin + outfit colours once ────────────────────────────────────
   useEffect(() => {
-    // Hide unselected rig, non-rig and high-poly models; configure shadows and skin tone
-    clonedScene.traverse((object: THREE.Object3D) => {
-      const name = object.name;
-      if (name === 'Man_(Rig)' || name === 'Woman_(Rig)') {
-        object.visible = name === targetRigName;
-        // Center the rig at origin: the authoring file placed Man at -1.5 and Woman at +1.5
-        if (name === targetRigName) {
-          object.position.x = isFemale ? -1.488 : 1.498;
-          object.position.y = 0;
-          object.position.z = 0;
-        }
-      } else if (name.includes('NonRig') || name.includes('HighPoly')) {
-        object.visible = false;
+    clonedScene.traverse((obj) => {
+      if (!(obj instanceof THREE.Mesh)) return;
+      obj.castShadow = true;
+      obj.receiveShadow = true;
+
+      const name = obj.name.toLowerCase();
+
+      const applyColor = (color: string) => {
+        const mat = (obj.material as THREE.MeshStandardMaterial).clone();
+        mat.color = new THREE.Color(color);
+        mat.roughness = 0.75;
+        mat.metalness = 0.0;
+        obj.material = mat;
+      };
+
+      // Teeth should remain clean white
+      if (name.includes('teeth')) {
+        const mat = (obj.material as THREE.MeshStandardMaterial).clone();
+        mat.color = new THREE.Color('#f0f0f0');
+        mat.roughness = 0.4;
+        obj.material = mat;
+        return;
       }
 
-      if (object instanceof THREE.Mesh) {
-        object.castShadow = true;
-        object.receiveShadow = true;
-        if (object.material) {
-          // Clone material per character for independent skin tone tint
-          const mat = (object.material as THREE.MeshStandardMaterial).clone();
-          mat.color = new THREE.Color(skinTone);
-          mat.roughness = 0.65;
-          object.material = mat;
-        }
+      // Eyes: preserve realistic eye appearance
+      if (name.includes('eye')) {
+        const mat = (obj.material as THREE.MeshStandardMaterial).clone();
+        mat.roughness = 0.2;
+        obj.material = mat;
+        return;
+      }
+
+      // Hair & Beard: deep authentic dark hair shades
+      if (name.includes('hair') || name.includes('beard') || name === 'mesh') {
+        const hairTones = ['#110905', '#1a0d07', '#241209', '#0d0704'];
+        const hairColor = hairTones[hash % hairTones.length];
+        applyColor(hairColor);
+        return;
+      }
+
+      // Head & Body: authentic Nigerian melanin skin tones
+      if (name.includes('head') || name.includes('body')) {
+        applyColor(skinTone);
+        return;
+      }
+
+      // Outfit top (shirt / jacket)
+      if (name.includes('outfit_top') || name.includes('top')) {
+        applyColor(outfitSet[0]);
+        return;
+      }
+
+      // Outfit bottom (trousers / skirt)
+      if (name.includes('outfit_bottom') || name.includes('bottom')) {
+        applyColor(outfitSet[1]);
+        return;
+      }
+
+      // Footwear (shoes / sneakers)
+      if (name.includes('footwear') || name.includes('shoe') || name.includes('foot')) {
+        applyColor('#222222');
+        return;
       }
     });
+  }, [clonedScene, skinTone, outfitSet, hash, isFemale]);
 
-    baseHipY.current = bones.hips?.position.y ?? 0;
-  }, [bones.hips, clonedScene, isFemale, skinTone, targetRigName]);
+  // ── Start idle animation on mount ────────────────────────────────────────
+  useEffect(() => {
+    const idleAction = actions['idle'] ?? actions['Idle'] ?? null;
+    if (idleAction) {
+      idleAction.reset().fadeIn(0.3).play();
+      currentAction.current = idleAction;
+    }
+    return () => {
+      mixer.stopAllAction();
+    };
+  }, [actions, mixer]);
 
+  // ── Expose CharacterHandle ───────────────────────────────────────────────
   useEffect(() => {
     if (!externalRef) return;
     externalRef.current = {
       group: groupRef.current,
-      setAnimState: (state: AnimState) => { stateRef.current = state; },
+      setAnimState: (state: AnimState) => {
+        if (stateRef.current === state) return;
+        stateRef.current = state;
+
+        // Sitting uses a frozen pose (mixer paused or T-pose with bend)
+        if (state === 'sitting') {
+          sitPoseRef.current = true;
+          // Fade out current animation
+          currentAction.current?.fadeOut(0.4);
+          // Play idle very slowly and freeze-like
+          const idleAct = actions['idle'] ?? actions['Idle'];
+          if (idleAct) {
+            idleAct.reset().setEffectiveTimeScale(0.05).setEffectiveWeight(1).fadeIn(0.4).play();
+            currentAction.current = idleAct;
+          }
+          return;
+        }
+
+        sitPoseRef.current = false;
+
+        // Map AnimState → Xbot clip name
+        const clipName =
+          state === 'running' ? 'run' :
+          state === 'walking' ? 'walk' :
+          'idle';
+
+        // Try lower-case first (Xbot naming), then capitalised (Soldier naming)
+        const next =
+          actions[clipName] ??
+          actions[clipName.charAt(0).toUpperCase() + clipName.slice(1)] ??
+          null;
+
+        if (!next || next === currentAction.current) return;
+
+        // Cross-fade
+        const prev = currentAction.current;
+        next.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(0.25).play();
+        prev?.fadeOut(0.25);
+        currentAction.current = next;
+      },
       getAnimState: () => stateRef.current,
-      setSpeedFactor: (factor: number) => { speedRef.current = THREE.MathUtils.clamp(factor, 0.3, 2); },
+      setSpeedFactor: (factor: number) => {
+        speedRef.current = THREE.MathUtils.clamp(factor, 0.3, 2.5);
+        if (currentAction.current) {
+          currentAction.current.setEffectiveTimeScale(speedRef.current);
+        }
+      },
     };
     return () => {
       if (externalRef.current?.group === groupRef.current) externalRef.current = null;
     };
-  }, [externalRef]);
+  }, [actions, externalRef, mixer]);
 
+  // ── Advance AnimationMixer every frame ───────────────────────────────────
   useFrame((_, delta) => {
-    const state = stateRef.current;
-    const moving = state === 'walking' || state === 'running';
-    const sitting = state === 'sitting';
-    const frequency = state === 'running' ? 10 : 6;
-    phaseRef.current += delta * frequency * speedRef.current;
-    const stride = moving ? Math.sin(phaseRef.current) * (state === 'running' ? 0.65 : 0.45) : 0;
-    const idleSway = !moving && !sitting ? Math.sin(phaseRef.current * 0.7) * 0.025 : 0;
-
-    poseBone(bones.hips, 'y', sitting ? baseHipY.current - 0.42 : baseHipY.current + idleSway, delta);
-    poseRotation(bones.spine, baseRotations, sitting ? -0.16 : idleSway * 1.5, delta);
-    poseRotation(bones.leftThigh, baseRotations, sitting ? -1.25 : stride, delta);
-    poseRotation(bones.rightThigh, baseRotations, sitting ? -1.25 : -stride, delta);
-    poseRotation(bones.leftShin, baseRotations, sitting ? 1.4 : Math.max(0, -stride) * 0.85, delta);
-    poseRotation(bones.rightShin, baseRotations, sitting ? 1.4 : Math.max(0, stride) * 0.85, delta);
-    poseRotation(bones.leftUpperArm, baseRotations, sitting ? -0.22 : -stride * 0.48, delta);
-    poseRotation(bones.rightUpperArm, baseRotations, sitting ? -0.22 : stride * 0.48, delta);
-    poseRotation(bones.leftForearm, baseRotations, sitting ? -0.18 : 0, delta);
-    poseRotation(bones.rightForearm, baseRotations, sitting ? -0.18 : 0, delta);
+    mixer.update(delta);
   });
 
+  // RPM avatar ground offset: the model origin is at the hip level (~1.0 m up)
+  // We shift it down so feet sit at Y=0
+  const groundOffset: [number, number, number] = [0, -0.92, 0];
+
   return (
-    <group ref={groupRef} position={position} scale={(scale ?? 1) * 0.58}>
-      <primitive object={clonedScene} />
+    <group ref={groupRef} position={position} scale={(scale ?? 1) * 0.95}>
+      {/* Nudge scene down so feet touch ground */}
+      <group position={groundOffset}>
+        <primitive object={clonedScene} />
+      </group>
     </group>
   );
 }
 
-function createBoneMap(root: THREE.Object3D): BoneMap {
-  return {
-    hips: findBone(root, [/pelvis.*l/i, /hip/i]),
-    spine: findBone(root, [/^spine(_1)?$/i, /spine/i]),
-    leftThigh: findBone(root, [/thigh.*l/i, /leftupleg/i]),
-    rightThigh: findBone(root, [/thigh.*r/i, /rightupleg/i]),
-    leftShin: findBone(root, [/shin.*l/i, /leftleg/i]),
-    rightShin: findBone(root, [/shin.*r/i, /rightleg/i]),
-    leftUpperArm: findBone(root, [/upper_arm.*l/i, /leftarm/i]),
-    rightUpperArm: findBone(root, [/upper_arm.*r/i, /rightarm/i]),
-    leftForearm: findBone(root, [/forearm.*l/i, /leftforearm/i]),
-    rightForearm: findBone(root, [/forearm.*r/i, /rightforearm/i]),
-  };
-}
-
-function captureBaseRotations(bones: BoneMap): BaseRotations {
-  const rotations = new Map<THREE.Bone, number>();
-  Object.values(bones).forEach((bone) => {
-    if (bone) rotations.set(bone, bone.rotation.x);
-  });
-  return rotations;
-}
-
-function findBone(root: THREE.Object3D, patterns: (string | RegExp)[]): THREE.Bone | null {
-  let result: THREE.Bone | null = null;
-  root.traverse((obj) => {
-    if (result) return;
-    if (obj instanceof THREE.Bone) {
-      for (const p of patterns) {
-        if (typeof p === 'string' && obj.name.toLowerCase() === p.toLowerCase()) {
-          result = obj;
-          return;
-        } else if (p instanceof RegExp && p.test(obj.name)) {
-          result = obj;
-          return;
-        }
-      }
-    }
-  });
-  return result;
-}
-
-function poseRotation(bone: THREE.Bone | null, baseRotations: BaseRotations, offset: number, delta: number) {
-  if (!bone) return;
-  const base = baseRotations.get(bone) ?? 0;
-  bone.rotation.x = THREE.MathUtils.damp(bone.rotation.x, base + offset, 9, delta);
-}
-
-function poseBone(bone: THREE.Bone | null, axis: 'x' | 'y' | 'z', target: number, delta: number) {
-  if (!bone) return;
-  bone.position[axis] = THREE.MathUtils.damp(bone.position[axis], target, 8, delta);
-}
-
-useGLTF.preload(HUMAN_MODEL_URL);
+// Preload both assets
+useGLTF.preload(RPM_URL);
+useGLTF.preload(XBOT_URL);
