@@ -60,10 +60,14 @@ function AppContent() {
   );
 }
 
+import { SimLifeProvider } from '@/sim/SimLifeContext';
+
 function App() {
   return (
     <AppProvider>
-      <AppContent />
+      <SimLifeProvider>
+        <AppContent />
+      </SimLifeProvider>
     </AppProvider>
   );
 }
