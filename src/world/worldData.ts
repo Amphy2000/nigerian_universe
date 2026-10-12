@@ -128,6 +128,39 @@ export const BUILDINGS: BuildingDef[] = [
       { id: 'owambe-jollof', label: 'Eat Free Souvenir Party Jollof', icon: 'utensils', action: 'sim:party-food', available: true },
     ],
   },
+  {
+    id: 'game-lounge',
+    label: 'Recreation & Gaming Lounge',
+    position: [24, 0, 2],
+    size: [10, 7, 8],
+    color: '#3b0764',
+    accentColor: '#d946ef',
+    signText: 'GAMING LOUNGE (WHOT & SPORTS)',
+    signColor: '#e879f9',
+    destination: 'explore',
+    entranceOffset: [0, 5],
+    bannerColor: '#a855f7',
+    interactions: [
+      { id: 'play-whot', label: 'Play 1v1 Whot! Card Match (₦3,000 Bet)', icon: 'gamepad', action: 'sim:play-whot', available: true },
+      { id: 'play-football', label: 'Play Street Penalty Shootout ⚽', icon: 'trophy', action: 'sim:play-football', available: true },
+    ],
+  },
+  {
+    id: 'my-apartment',
+    label: 'My Lagos Residence (Apartment)',
+    position: [-24, 0, 2],
+    size: [10, 8, 8],
+    color: '#1e293b',
+    accentColor: '#f59e0b',
+    signText: 'MY RESIDENCE (APARTMENT)',
+    signColor: '#fbbf24',
+    destination: 'explore',
+    entranceOffset: [0, 5],
+    bannerColor: '#f59e0b',
+    interactions: [
+      { id: 'enter-apartment', label: 'Enter My Living Room & Bed', icon: 'door', action: 'sim:open-apartment', available: true },
+    ],
+  },
 ];
 
 export const INTERACTABLES: InteractableDef[] = [

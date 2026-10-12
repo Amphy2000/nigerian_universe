@@ -29,6 +29,9 @@ interface PlayerProps {
 const _toDest = new THREE.Vector3();
 const _newPos = new THREE.Vector3();
 
+import { useState, useEffect } from 'react';
+import { type CustomAvatarConfig } from './HumanCharacter';
+
 export function Player({ keys, onNearInteractable, onArriveAtDestination, reducedMotion, cameraAngle, cameraDistance, playerRef, appearanceKey }: PlayerProps) {
   const groupRef = useRef<THREE.Group>(null);
   const charRef = useRef<CharacterHandle | null>(null);
@@ -38,6 +41,26 @@ export function Player({ keys, onNearInteractable, onArriveAtDestination, reduce
   const currentSpeed = useRef(0);
   const lastNearbyId = useRef<string | null>(null);
   const sitting = useRef(false);
+
+  const [customConfig, setCustomConfig] = useState<CustomAvatarConfig | undefined>(() => {
+    try {
+      const saved = localStorage.getItem('naija_avatar_config');
+      return saved ? JSON.parse(saved) : undefined;
+    } catch {
+      return undefined;
+    }
+  });
+
+  useEffect(() => {
+    const handleStorage = () => {
+      try {
+        const saved = localStorage.getItem('naija_avatar_config');
+        if (saved) setCustomConfig(JSON.parse(saved));
+      } catch {}
+    };
+    window.addEventListener('storage', handleStorage);
+    return () => window.removeEventListener('storage', handleStorage);
+  }, []);
   const sitRotation = useRef(0);
   const arrivedFired = useRef(false);
 
@@ -202,7 +225,7 @@ export function Player({ keys, onNearInteractable, onArriveAtDestination, reduce
 
   return (
     <group ref={groupRef} position={[0, 0, 10]}>
-      <HumanCharacter externalRef={charRef} appearanceKey={appearanceKey} scale={1} />
+      <HumanCharacter externalRef={charRef} appearanceKey={appearanceKey} customConfig={customConfig} scale={1} />
     </group>
   );
 }

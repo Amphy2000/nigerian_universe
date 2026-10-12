@@ -59,7 +59,7 @@ interface AppState {
 const AppContext = createContext<AppState | null>(null);
 
 export function AppProvider({ children }: { children: ReactNode }) {
-  const [page, setPage] = useState<Page>('home');
+  const [page, setPage] = useState<Page>('explore');
   const [currentCaseId, setCurrentCaseId] = useState<string | null>(null);
   const [cases, setCases] = useState<CourtCase[]>(CASES);
   const [comments, setComments] = useState<Comment[]>(COMMENTS);

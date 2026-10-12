@@ -7,6 +7,10 @@ import { PhoneModal } from '@/sim/components/PhoneModal';
 import { InventoryModal } from '@/sim/components/InventoryModal';
 import { CareerModal } from '@/sim/components/CareerModal';
 import { SocialInteractionModal } from '@/sim/components/SocialInteractionModal';
+import { CharacterCustomizerModal } from '@/sim/components/CharacterCustomizerModal';
+import { WhotGameModal } from '@/games/WhotGameModal';
+import { FootballMinigameModal } from '@/games/FootballMinigameModal';
+import { ApartmentModal } from '@/world/ApartmentModal';
 import { WorldCanvas, type DestinationMarkerHandle } from '@/world/WorldCanvas';
 import { type PlayerHandle } from '@/world/Player';
 import { BUILDINGS, INTERACTABLES, getBenchSitPoint, getBenchSitRotation, type BuildingDef, type InteractableDef, type InteractionDef } from '@/world/worldData';
@@ -56,6 +60,10 @@ export function ExplorePage() {
   const [careerOpen, setCareerOpen] = useState(false);
   const [socialNpc, setSocialNpc] = useState<SimNPCProfile | null>(null);
   const [citizensDirectoryOpen, setCitizensDirectoryOpen] = useState(false);
+  const [customizerOpen, setCustomizerOpen] = useState(false);
+  const [whotOpen, setWhotOpen] = useState(false);
+  const [footballOpen, setFootballOpen] = useState(false);
+  const [apartmentOpen, setApartmentOpen] = useState(false);
 
   // Camera drag state
   const dragRef = useRef<{ x: number; y: number; isDragging: boolean; wasDragging: boolean; pinchDist: number; startedOnUI: boolean }>({
@@ -226,6 +234,15 @@ export function ExplorePage() {
         case 'sim:party-food':
           adjustNeeds({ hunger: 35, fun: 20 });
           showSimToast('Collected free wedding party jollof with souvenir plastic bowl!', '🍛', 'success');
+          break;
+        case 'sim:play-whot':
+          setWhotOpen(true);
+          break;
+        case 'sim:play-football':
+          setFootballOpen(true);
+          break;
+        case 'sim:open-apartment':
+          setApartmentOpen(true);
           break;
       }
       return;
@@ -457,13 +474,23 @@ export function ExplorePage() {
           <ArrowLeft className="w-4 h-4" /> Exit
         </button>
 
-        {/* Talk to Citizens Directory Trigger */}
-        <button
-          onClick={() => setCitizensDirectoryOpen(true)}
-          className="pointer-events-auto flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-600/80 hover:bg-emerald-500 backdrop-blur-md border border-emerald-400/40 text-sm font-bold text-white transition-all shadow-lg active:scale-95"
-        >
-          <Users className="w-4 h-4" /> Citizens Directory
-        </button>
+        <div className="pointer-events-auto flex items-center gap-2">
+          {/* Character Customizer Button (Create-A-Sim) */}
+          <button
+            onClick={() => setCustomizerOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-amber-500 hover:bg-amber-400 text-black font-black text-sm transition-all shadow-lg active:scale-95"
+          >
+            <Sparkles className="w-4 h-4 text-black" /> Customize Drip (CAS)
+          </button>
+
+          {/* Talk to Citizens Directory Trigger */}
+          <button
+            onClick={() => setCitizensDirectoryOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-emerald-600/80 hover:bg-emerald-500 backdrop-blur-md border border-emerald-400/40 text-sm font-bold text-white transition-all shadow-lg active:scale-95"
+          >
+            <Users className="w-4 h-4" /> Citizens Directory
+          </button>
+        </div>
       </div>
 
       {/* Sitting state — Stand button */}
@@ -556,6 +583,18 @@ export function ExplorePage() {
 
       {/* ─── SIMS CAREER MODAL ────────────────────────────────────────────── */}
       {careerOpen && <CareerModal onClose={() => setCareerOpen(false)} />}
+
+      {/* ─── SIMS CHARACTER CUSTOMIZER MODAL (Create-A-Sim / CAS) ─────────── */}
+      {customizerOpen && <CharacterCustomizerModal onClose={() => setCustomizerOpen(false)} />}
+
+      {/* ─── WHOT! NATIONAL CARD GAME MODAL ───────────────────────────────── */}
+      {whotOpen && <WhotGameModal onClose={() => setWhotOpen(false)} />}
+
+      {/* ─── FOOTBALL PENALTY SHOOTOUT MODAL ──────────────────────────────── */}
+      {footballOpen && <FootballMinigameModal onClose={() => setFootballOpen(false)} />}
+
+      {/* ─── LAGOS APARTMENT RESIDENCE MODAL ──────────────────────────────── */}
+      {apartmentOpen && <ApartmentModal onClose={() => setApartmentOpen(false)} />}
 
       {/* ─── SIMS SOCIAL INTERACTION MODAL (When chatting with an NPC) ────── */}
       {socialNpc && <SocialInteractionModal npc={socialNpc} onClose={() => setSocialNpc(null)} />}
