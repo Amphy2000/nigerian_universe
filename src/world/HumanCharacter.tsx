@@ -1,22 +1,26 @@
 /**
  * HumanCharacter.tsx
  *
- * Grounded Sims-style 3D Humanoid Character Engine:
- * - Uses ReadyPlayerMe multi-mesh clothed avatar (readyplayer.me.glb)
- * - Captures exact rest-pose orientations of the RPM skeleton
- * - Applies natural forward-kinematics locomotion (Idle, Walk, Run, Sit)
- *   with proper knee flexion, counter-arm swinging, and foot planting at Y=0
- * - Fully supports live character customization: skin tones, hair colors,
- *   Ankara outfit palettes, gender scaling, and traditional attire styles.
+ * Sims 4-Grade Mocap 3D Humanoid Engine for Nigerian Universe:
+ * - Uses ReadyPlayerMe base avatar (readyplayer.me.glb)
+ * - Directly drives skeleton using official ReadyPlayerMe motion clips:
+ *   - idle.glb (M_Standing_Idle_001)
+ *   - walk.glb (M_Walk_001, stabilized in-place)
+ *   - run.glb (M_Run_001, stabilized in-place)
+ *   - dance.glb (M_Dances_001)
+ *   - talk.glb (M_Talking_Variations_001)
+ * - Ground-pinned foot plant at exact Y = 0 (no floating, no sinking)
+ * - Fluid cross-fading (0.2s) with speed-matching timeScale
+ * - Retains seated bench kinematics and customizer melanin & Ankara palettes
  */
 
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
 
-export type AnimState = 'idle' | 'walking' | 'running' | 'sitting';
+export type AnimState = 'idle' | 'walking' | 'running' | 'sitting' | 'dancing' | 'talking';
 
 export interface CustomAvatarConfig {
   gender?: 'male' | 'female';
@@ -41,9 +45,15 @@ interface HumanCharacterProps {
   customConfig?: CustomAvatarConfig;
   scale?: number;
   position?: [number, number, number];
+  initialAnim?: AnimState;
 }
 
 const RPM_URL = '/readyplayer.me.glb';
+const IDLE_URL = '/animations/idle.glb';
+const WALK_URL = '/animations/walk.glb';
+const RUN_URL = '/animations/run.glb';
+const DANCE_URL = '/animations/dance.glb';
+const TALK_URL = '/animations/talk.glb';
 
 // Authentic Nigerian Melanin Skin Tones
 export const NIGERIAN_SKIN_TONES = [
@@ -72,22 +82,17 @@ function hashKey(key: string): number {
   return Math.abs(h);
 }
 
-interface BoneMap {
-  hips: THREE.Object3D | null;
-  spine: THREE.Object3D | null;
-  spine1: THREE.Object3D | null;
-  neck: THREE.Object3D | null;
-  head: THREE.Object3D | null;
-  leftUpLeg: THREE.Object3D | null;
-  rightUpLeg: THREE.Object3D | null;
-  leftLeg: THREE.Object3D | null;
-  rightLeg: THREE.Object3D | null;
-  leftFoot: THREE.Object3D | null;
-  rightFoot: THREE.Object3D | null;
-  leftArm: THREE.Object3D | null;
-  rightArm: THREE.Object3D | null;
-  leftForearm: THREE.Object3D | null;
-  rightForearm: THREE.Object3D | null;
+// In-place stabilizer: zero out forward Z movement on root/hips
+function processInPlace(clip: THREE.AnimationClip): THREE.AnimationClip {
+  const cloned = clip.clone();
+  for (const track of cloned.tracks) {
+    if (track.name.toLowerCase().includes('hips.position') || track.name.toLowerCase().includes('root.position')) {
+      for (let i = 2; i < track.values.length; i += 3) {
+        track.values[i] = 0;
+      }
+    }
+  }
+  return cloned;
 }
 
 export function HumanCharacter({
@@ -96,19 +101,102 @@ export function HumanCharacter({
   customConfig,
   scale = 1,
   position = [0, 0, 0],
+  initialAnim = 'idle',
 }: HumanCharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
-  const stateRef = useRef<AnimState>('idle');
+  const stateRef = useRef<AnimState>(initialAnim);
   const speedRef = useRef(1);
-  const phaseRef = useRef(Math.random() * Math.PI * 2);
 
+  // Load avatar and official RPM animation clips
   const { scene: rpmScene } = useGLTF(RPM_URL);
+  const idleGltf = useGLTF(IDLE_URL);
+  const walkGltf = useGLTF(WALK_URL);
+  const runGltf = useGLTF(RUN_URL);
+  const danceGltf = useGLTF(DANCE_URL);
+  const talkGltf = useGLTF(TALK_URL);
+
+  // Clone RPM avatar scene uniquely for this instance
   const clonedScene = useMemo(() => SkeletonUtils.clone(rpmScene), [rpmScene]);
 
-  const hash = useMemo(() => hashKey(appearanceKey), [appearanceKey]);
-  const isFemale = customConfig?.gender === 'female' || appearanceKey.toLowerCase().includes('female');
+  // Set up Three.js AnimationMixer on clonedScene
+  const mixer = useMemo(() => new THREE.AnimationMixer(clonedScene), [clonedScene]);
 
-  // Compute colors
+  // Create AnimationActions from RPM clips
+  const actions = useMemo(() => {
+    if (!mixer) return null;
+    const idleClip = idleGltf.animations?.[0];
+    const walkClip = walkGltf.animations?.[0] ? processInPlace(walkGltf.animations[0]) : null;
+    const runClip = runGltf.animations?.[0] ? processInPlace(runGltf.animations[0]) : null;
+    const danceClip = danceGltf.animations?.[0];
+    const talkClip = talkGltf.animations?.[0];
+
+    const map: Record<AnimState, THREE.AnimationAction | null> = {
+      idle: idleClip ? mixer.clipAction(idleClip) : null,
+      walking: walkClip ? mixer.clipAction(walkClip) : null,
+      running: runClip ? mixer.clipAction(runClip) : null,
+      dancing: danceClip ? mixer.clipAction(danceClip) : null,
+      talking: talkClip ? mixer.clipAction(talkClip) : null,
+      sitting: null,
+    };
+
+    Object.values(map).forEach((act) => {
+      if (act) {
+        act.setLoop(THREE.LoopRepeat, Infinity);
+        act.clampWhenFinished = false;
+      }
+    });
+
+    return map;
+  }, [mixer, idleGltf, walkGltf, runGltf, danceGltf, talkGltf]);
+
+  const currentActionRef = useRef<THREE.AnimationAction | null>(null);
+
+  // Smooth cross-fade transition between animation states
+  const transitionTo = useCallback((nextState: AnimState) => {
+    if (!actions) return;
+    if (stateRef.current === nextState && currentActionRef.current?.isRunning()) return;
+
+    stateRef.current = nextState;
+    const prevAction = currentActionRef.current;
+    const nextAction = actions[nextState] ?? null;
+
+    if (nextState === 'sitting') {
+      if (prevAction) {
+        prevAction.fadeOut(0.2);
+      }
+      currentActionRef.current = null;
+      return;
+    }
+
+    if (nextAction && nextAction !== prevAction) {
+      nextAction.reset();
+      nextAction.timeScale = speedRef.current;
+      nextAction.fadeIn(0.2);
+      nextAction.play();
+    }
+
+    if (prevAction && prevAction !== nextAction) {
+      prevAction.fadeOut(0.2);
+    }
+
+    currentActionRef.current = nextAction;
+  }, [actions]);
+
+  // Start with initial animation
+  useEffect(() => {
+    if (!actions) return;
+    const startAction = actions[initialAnim] || actions.idle;
+    if (startAction) {
+      startAction.reset().fadeIn(0.2).play();
+      currentActionRef.current = startAction;
+    }
+    return () => {
+      mixer.stopAllAction();
+    };
+  }, [actions, mixer, initialAnim]);
+
+  // Compute appearance colors
+  const hash = useMemo(() => hashKey(appearanceKey), [appearanceKey]);
   const skinColor = customConfig?.skinTone ?? NIGERIAN_SKIN_TONES[hash % NIGERIAN_SKIN_TONES.length].color;
   const outfitPreset = ANKARA_OUTFIT_PRESETS[hash % ANKARA_OUTFIT_PRESETS.length];
   const topColor = customConfig?.outfitTopColor ?? outfitPreset[0];
@@ -117,20 +205,15 @@ export function HumanCharacter({
   const hairColor = customConfig?.hairColor ?? ['#0c0704', '#170b05', '#241006'][hash % 3];
   const hatColor = customConfig?.headwearColor ?? ['#1e293b', '#3b1f0e', '#0f172a'][hash % 3];
 
-  // Discover RPM bones
-  const bones = useMemo<BoneMap>(() => {
+  // Discover RPM bones for sitting posture
+  const bones = useMemo(() => {
     return {
       hips: clonedScene.getObjectByName('Hips') ?? null,
       spine: clonedScene.getObjectByName('Spine') ?? null,
-      spine1: clonedScene.getObjectByName('Spine1') ?? null,
-      neck: clonedScene.getObjectByName('Neck') ?? null,
-      head: clonedScene.getObjectByName('Head') ?? null,
       leftUpLeg: clonedScene.getObjectByName('LeftUpLeg') ?? null,
       rightUpLeg: clonedScene.getObjectByName('RightUpLeg') ?? null,
       leftLeg: clonedScene.getObjectByName('LeftLeg') ?? null,
       rightLeg: clonedScene.getObjectByName('RightLeg') ?? null,
-      leftFoot: clonedScene.getObjectByName('LeftFoot') ?? null,
-      rightFoot: clonedScene.getObjectByName('RightFoot') ?? null,
       leftArm: clonedScene.getObjectByName('LeftArm') ?? null,
       rightArm: clonedScene.getObjectByName('RightArm') ?? null,
       leftForearm: clonedScene.getObjectByName('LeftForeArm') ?? null,
@@ -138,7 +221,6 @@ export function HumanCharacter({
     };
   }, [clonedScene]);
 
-  // Capture RPM base rest rotations
   const baseRotations = useMemo(() => {
     const map = new Map<THREE.Object3D, { x: number; y: number; z: number }>();
     Object.values(bones).forEach((bone) => {
@@ -151,7 +233,7 @@ export function HumanCharacter({
 
   const baseHipsY = useRef(1.02);
 
-  // Apply materials once
+  // Apply melanin, Ankara prints, and shadow settings
   useEffect(() => {
     clonedScene.traverse((obj) => {
       if (!(obj instanceof THREE.Mesh)) return;
@@ -168,42 +250,34 @@ export function HumanCharacter({
         obj.material = mat;
       };
 
-      // Teeth
       if (name.includes('teeth')) {
         applyMat('#f5f5f5', 0.3);
         return;
       }
-      // Eyes: preserve realistic cornea
       if (name.includes('eye')) {
         applyMat('#ffffff', 0.2);
         return;
       }
-      // Head & Body skin
       if (name.includes('head') || name.includes('body')) {
         applyMat(skinColor, 0.65);
         return;
       }
-      // Hair & Beard
       if (name.includes('hair') || name.includes('beard')) {
         applyMat(hairColor, 0.85);
         return;
       }
-      // Hat / Headwear
       if (name.includes('headwear') || name === 'mesh') {
         applyMat(hatColor, 0.8);
         return;
       }
-      // Shirt / Jacket
       if (name.includes('outfit_top') || name.includes('top')) {
         applyMat(topColor, 0.7);
         return;
       }
-      // Trousers / Pants
       if (name.includes('outfit_bottom') || name.includes('bottom')) {
         applyMat(bottomColor, 0.75);
         return;
       }
-      // Shoes
       if (name.includes('footwear') || name.includes('shoe')) {
         applyMat(shoesColor, 0.6);
         return;
@@ -221,89 +295,51 @@ export function HumanCharacter({
     externalRef.current = {
       group: groupRef.current,
       setAnimState: (s: AnimState) => {
-        stateRef.current = s;
+        transitionTo(s);
       },
       getAnimState: () => stateRef.current,
       setSpeedFactor: (factor: number) => {
         speedRef.current = THREE.MathUtils.clamp(factor, 0.4, 2.2);
+        if (currentActionRef.current && (stateRef.current === 'walking' || stateRef.current === 'running')) {
+          currentActionRef.current.timeScale = speedRef.current;
+        }
       },
     };
     return () => {
       if (externalRef.current?.group === groupRef.current) externalRef.current = null;
     };
-  }, [externalRef]);
+  }, [externalRef, transitionTo]);
 
-  // ── Natural Grounded Locomotion Kinematics on useFrame ─────────────────────
+  // Render loop
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05);
-    const state = stateRef.current;
-    const isMoving = state === 'walking' || state === 'running';
-    const isSitting = state === 'sitting';
-    const isRunning = state === 'running';
 
-    const freq = isRunning ? 9.5 : 5.8;
-    phaseRef.current += dt * freq * speedRef.current;
+    if (stateRef.current === 'sitting') {
+      // Procedural seated pose on bench
+      const rotateBone = (bone: THREE.Object3D | null, axis: 'x' | 'y' | 'z', offset: number, dampSpeed = 10) => {
+        if (!bone) return;
+        const base = baseRotations.get(bone);
+        if (!base) return;
+        bone.rotation[axis] = THREE.MathUtils.damp(bone.rotation[axis], base[axis] + offset, dampSpeed, dt);
+      };
 
-    const phase = phaseRef.current;
-
-    // Stride amplitude
-    const stride = isMoving ? Math.sin(phase) * (isRunning ? 0.65 : 0.42) : 0;
-    const idleBreathe = !isMoving && !isSitting ? Math.sin(phase * 0.4) * 0.025 : 0;
-
-    // Helper to rotate relative to captured base
-    const rotateBone = (bone: THREE.Object3D | null, axis: 'x' | 'y' | 'z', offset: number, dampSpeed = 12) => {
-      if (!bone) return;
-      const base = baseRotations.get(bone);
-      if (!base) return;
-      const target = base[axis] + offset;
-      bone.rotation[axis] = THREE.MathUtils.damp(bone.rotation[axis], target, dampSpeed, dt);
-    };
-
-    if (isSitting) {
-      // ── SITTING: Legs 90 deg forward, knees 90 deg down, hips on bench ──
       if (bones.hips) {
         bones.hips.position.y = THREE.MathUtils.damp(bones.hips.position.y, baseHipsY.current - 0.42, 10, dt);
       }
-      rotateBone(bones.spine, 'x', -0.12, 10);
-      rotateBone(bones.leftUpLeg, 'x', -1.4, 10);
-      rotateBone(bones.rightUpLeg, 'x', -1.4, 10);
-      rotateBone(bones.leftLeg, 'x', 1.45, 10);
-      rotateBone(bones.rightLeg, 'x', 1.45, 10);
-      rotateBone(bones.leftArm, 'x', 0.25, 10);
-      rotateBone(bones.rightArm, 'x', 0.25, 10);
-      rotateBone(bones.leftForearm, 'x', -0.3, 10);
-      rotateBone(bones.rightForearm, 'x', -0.3, 10);
+      rotateBone(bones.spine, 'x', -0.12);
+      rotateBone(bones.leftUpLeg, 'x', -1.4);
+      rotateBone(bones.rightUpLeg, 'x', -1.4);
+      rotateBone(bones.leftLeg, 'x', 1.45);
+      rotateBone(bones.rightLeg, 'x', 1.45);
+      rotateBone(bones.leftArm, 'x', 0.25);
+      rotateBone(bones.rightArm, 'x', 0.25);
+      rotateBone(bones.leftForearm, 'x', -0.3);
+      rotateBone(bones.rightForearm, 'x', -0.3);
       return;
     }
 
-    // ── STANDING & WALKING: Strict ground contact at Y=0 ───────────────────
-    if (bones.hips) {
-      const hipBob = isMoving ? Math.abs(Math.sin(phase * 2)) * 0.03 : idleBreathe;
-      bones.hips.position.y = THREE.MathUtils.damp(bones.hips.position.y, baseHipsY.current + hipBob, 12, dt);
-    }
-
-    // Spine posture (lean slightly forward when running)
-    const spineLean = isRunning ? -0.15 : isMoving ? -0.06 : idleBreathe;
-    rotateBone(bones.spine, 'x', spineLean, 10);
-
-    // Upper Legs (Thighs swing opposite each other)
-    rotateBone(bones.leftUpLeg, 'x', stride, 14);
-    rotateBone(bones.rightUpLeg, 'x', -stride, 14);
-
-    // Lower Legs (Knees bend during forward swing, straight on ground plant)
-    const leftKneeBend = isMoving ? Math.max(0, -stride) * 0.85 : 0;
-    const rightKneeBend = isMoving ? Math.max(0, stride) * 0.85 : 0;
-    rotateBone(bones.leftLeg, 'x', leftKneeBend, 14);
-    rotateBone(bones.rightLeg, 'x', rightKneeBend, 14);
-
-    // Arms counter-swing opposite legs
-    const armSwing = isMoving ? stride * 0.55 : Math.sin(phase * 0.5) * 0.02;
-    rotateBone(bones.leftArm, 'x', -armSwing, 12);
-    rotateBone(bones.rightArm, 'x', armSwing, 12);
-
-    // Forearms slightly bent forward
-    rotateBone(bones.leftForearm, 'x', isRunning ? -0.35 : -0.12, 10);
-    rotateBone(bones.rightForearm, 'x', isRunning ? -0.35 : -0.12, 10);
+    // Update mixer for mocap animation playback
+    mixer.update(dt);
   });
 
   return (
@@ -314,3 +350,8 @@ export function HumanCharacter({
 }
 
 useGLTF.preload(RPM_URL);
+useGLTF.preload(IDLE_URL);
+useGLTF.preload(WALK_URL);
+useGLTF.preload(RUN_URL);
+useGLTF.preload(DANCE_URL);
+useGLTF.preload(TALK_URL);

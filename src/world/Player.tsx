@@ -157,6 +157,8 @@ export function Player({ keys, onNearInteractable, onArriveAtDestination, reduce
     let animState: AnimState = 'idle';
     if (isMoving) {
       animState = currentSpeed.current > PLAYER_SPEED * 1.3 ? 'running' : 'walking';
+    } else if (k['g']) {
+      animState = 'dancing';
     }
     charRef.current?.setAnimState(animState);
 

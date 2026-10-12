@@ -87,7 +87,9 @@ export function NPC({ def }: NPCProps) {
     groupRef.current.rotation.y += adj * 0.1;
 
     const isMoving = currentSpeed.current > 0.3;
-    const animState: AnimState = isMoving ? 'walking' : 'idle';
+    const animState: AnimState = isMoving
+      ? 'walking'
+      : (def.id === 'npc-2' ? 'talking' : def.id === 'npc-3' ? 'dancing' : 'idle');
     charRef.current?.setAnimState(animState);
 
     if (isMoving) {
