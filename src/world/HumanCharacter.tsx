@@ -70,26 +70,48 @@ function hashKey(key: string): number {
 }
 
 /**
- * Clone animation clips from the Xbot scene and retarget their track names so
- * they drive the RPM skeleton.
+ * Retarget Xbot animation tracks to ReadyPlayerMe skeleton.
  *
- * Both skeletons use identical Mixamo bone naming (LeftUpLeg, RightLeg, etc.)
- * so "retargeting" here is simply ensuring the clip references root correctly.
- *
- * The RPM skeleton root is named "Armature" → the Xbot root is "Armature" too,
- * so clips work as-is once we attach the mixer to the RPM scene.
+ * 1. Strips 'mixamorig:' and 'Armature.' prefixes from track names so they
+ *    target RPM's bone names ('Hips', 'LeftUpLeg', 'RightUpLeg', etc.).
+ * 2. Retains quaternion (rotation) tracks for all bones.
+ * 3. Scales Hips translation by 0.01 (Xbot was authored in centimeters; RPM is in meters).
+ * 4. Filters out position and scale tracks on non-hip bones to preserve RPM anatomy.
  */
 function cloneClipsForRPM(xbotClips: THREE.AnimationClip[]): THREE.AnimationClip[] {
   return xbotClips.map((clip) => {
-    const cloned = clip.clone();
-    // Xbot tracks are relative to its Armature; RPM uses the same bone names,
-    // so we just strip any leading "Armature." from track names if present.
-    cloned.tracks = cloned.tracks.map((track) => {
-      const t = track.clone();
-      t.name = t.name.replace(/^Armature\./, '');
-      return t;
+    const newTracks: THREE.KeyframeTrack[] = [];
+
+    clip.tracks.forEach((track) => {
+      // Map e.g. 'mixamorig:Hips.quaternion' -> 'Hips.quaternion'
+      // or 'Armature.mixamorig:Spine.quaternion' -> 'Spine.quaternion'
+      let cleanName = track.name
+        .replace(/^Armature\./i, '')
+        .replace(/^mixamorig:?/i, '');
+
+      const isRotation = cleanName.endsWith('.quaternion');
+      const isPosition = cleanName.endsWith('.position');
+      const isHips = cleanName.toLowerCase().startsWith('hips.');
+
+      if (isRotation) {
+        const clonedTrack = track.clone();
+        clonedTrack.name = cleanName;
+        newTracks.push(clonedTrack);
+      } else if (isHips && isPosition) {
+        // Hips position needs 0.01 scale factor (cm -> m)
+        const clonedTrack = track.clone();
+        clonedTrack.name = cleanName;
+        const vals = (clonedTrack as THREE.VectorKeyframeTrack).values;
+        for (let i = 0; i < vals.length; i += 3) {
+          vals[i] *= 0.01;     // X
+          vals[i + 1] *= 0.01; // Y (height)
+          vals[i + 2] *= 0.01; // Z
+        }
+        newTracks.push(clonedTrack);
+      }
     });
-    return cloned;
+
+    return new THREE.AnimationClip(clip.name, clip.duration, newTracks);
   });
 }
 
@@ -274,16 +296,10 @@ export function HumanCharacter({
     mixer.update(delta);
   });
 
-  // RPM avatar ground offset: the model origin is at the hip level (~1.0 m up)
-  // We shift it down so feet sit at Y=0
-  const groundOffset: [number, number, number] = [0, -0.92, 0];
-
+  // RPM avatar origin is already at the bottom of the footwear (Y = 0)
   return (
     <group ref={groupRef} position={position} scale={(scale ?? 1) * 0.95}>
-      {/* Nudge scene down so feet touch ground */}
-      <group position={groundOffset}>
-        <primitive object={clonedScene} />
-      </group>
+      <primitive object={clonedScene} />
     </group>
   );
 }
