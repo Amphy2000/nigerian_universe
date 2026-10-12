@@ -176,7 +176,7 @@ export const INTERACTABLES: InteractableDef[] = [
   },
   {
     id: 'bench-1', label: 'Park Bench', type: 'bench', position: [-6, 0, 8], collisionRadius: 1.2,
-    sitOffset: [-6, 0, 9.5], sitRotation: Math.PI,
+    sitOffset: [-6, 0, 8], sitRotation: Math.PI,
     interactions: [
       { id: 'sit', label: 'Sit', icon: 'chair', action: 'bench:sit', available: true },
       { id: 'stand', label: 'Stand', icon: 'stand', action: 'bench:stand', available: false, unavailableReason: 'Only available when sitting' },
@@ -184,7 +184,7 @@ export const INTERACTABLES: InteractableDef[] = [
   },
   {
     id: 'bench-2', label: 'Park Bench', type: 'bench', position: [6, 0, 8], collisionRadius: 1.2,
-    sitOffset: [6, 0, 9.5], sitRotation: Math.PI,
+    sitOffset: [6, 0, 8], sitRotation: Math.PI,
     interactions: [
       { id: 'sit', label: 'Sit', icon: 'chair', action: 'bench:sit', available: true },
       { id: 'stand', label: 'Stand', icon: 'stand', action: 'bench:stand', available: false, unavailableReason: 'Only available when sitting' },
@@ -192,7 +192,7 @@ export const INTERACTABLES: InteractableDef[] = [
   },
   {
     id: 'bench-3', label: 'Park Bench', type: 'bench', position: [-6, 0, -4], collisionRadius: 1.2,
-    sitOffset: [-6, 0, -2.5], sitRotation: 0,
+    sitOffset: [-6, 0, -4], sitRotation: 0,
     interactions: [
       { id: 'sit', label: 'Sit', icon: 'chair', action: 'bench:sit', available: true },
       { id: 'stand', label: 'Stand', icon: 'stand', action: 'bench:stand', available: false, unavailableReason: 'Only available when sitting' },
@@ -200,7 +200,7 @@ export const INTERACTABLES: InteractableDef[] = [
   },
   {
     id: 'bench-4', label: 'Park Bench', type: 'bench', position: [6, 0, -4], collisionRadius: 1.2,
-    sitOffset: [6, 0, -2.5], sitRotation: 0,
+    sitOffset: [6, 0, -4], sitRotation: 0,
     interactions: [
       { id: 'sit', label: 'Sit', icon: 'chair', action: 'bench:sit', available: true },
       { id: 'stand', label: 'Stand', icon: 'stand', action: 'bench:stand', available: false, unavailableReason: 'Only available when sitting' },

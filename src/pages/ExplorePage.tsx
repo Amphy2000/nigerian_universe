@@ -11,6 +11,9 @@ import { CharacterCustomizerModal } from '@/sim/components/CharacterCustomizerMo
 import { WhotGameModal } from '@/games/WhotGameModal';
 import { FootballMinigameModal } from '@/games/FootballMinigameModal';
 import { ApartmentModal } from '@/world/ApartmentModal';
+import { BukaInteriorModal } from '@/world/BukaInteriorModal';
+import { ClubInteriorModal } from '@/world/ClubInteriorModal';
+import { TechHubInteriorModal } from '@/world/TechHubInteriorModal';
 import { WorldCanvas, type DestinationMarkerHandle } from '@/world/WorldCanvas';
 import { type PlayerHandle } from '@/world/Player';
 import { BUILDINGS, INTERACTABLES, getBenchSitPoint, getBenchSitRotation, type BuildingDef, type InteractableDef, type InteractionDef } from '@/world/worldData';
@@ -34,7 +37,6 @@ export function ExplorePage() {
     adjustNeeds,
     spendNaira,
     showSimToast,
-    doHustleWork,
     npcs,
   } = useSimLife();
 
@@ -64,6 +66,9 @@ export function ExplorePage() {
   const [whotOpen, setWhotOpen] = useState(false);
   const [footballOpen, setFootballOpen] = useState(false);
   const [apartmentOpen, setApartmentOpen] = useState(false);
+  const [bukaOpen, setBukaOpen] = useState(false);
+  const [clubOpen, setClubOpen] = useState(false);
+  const [techHubOpen, setTechHubOpen] = useState(false);
 
   // Camera drag state
   const dragRef = useRef<{ x: number; y: number; isDragging: boolean; wasDragging: boolean; pinchDist: number; startedOnUI: boolean }>({
@@ -159,10 +164,7 @@ export function ExplorePage() {
     if (action.action.startsWith('sim:')) {
       switch (action.action) {
         case 'sim:buy-jollof':
-          if (spendNaira(2500, 'Party Jollof & Dodo')) {
-            adjustNeeds({ hunger: 45, fun: 15 });
-            showSimToast('Ate hot sweet party jollof with fried plantain!', '🍛', 'success');
-          }
+          setBukaOpen(true);
           break;
         case 'sim:buy-amala':
           if (spendNaira(3500, 'Hot Amala & Goat Meat')) {
@@ -193,7 +195,7 @@ export function ExplorePage() {
           showSimToast('Warmed up by the glowing barbecue coals with fellow citizens.', '✨', 'info');
           break;
         case 'sim:work-tech':
-          doHustleWork();
+          setTechHubOpen(true);
           break;
         case 'sim:buy-espresso':
           if (spendNaira(1200, 'Tech Hub Double Espresso')) {
@@ -222,8 +224,7 @@ export function ExplorePage() {
           showSimToast('Conductor: "CMS! Enter with your exact change o! No 1000 naira note!"', '📢', 'info');
           break;
         case 'sim:dance-party':
-          adjustNeeds({ fun: 40, social: 25, energy: -15 });
-          showSimToast('Dancing to Afrobeats on the Owambe dance floor! Maximum enjoyment!', '💃', 'success');
+          setClubOpen(true);
           break;
         case 'sim:spray-party':
           if (spendNaira(1000, 'Sprayed Cash at Owambe')) {
@@ -261,6 +262,7 @@ export function ExplorePage() {
       const sitRot = getBenchSitRotation(bench);
       if (playerRef.current?.group) {
         playerRef.current.group.position.set(sitPoint.x, 0, sitPoint.z);
+        playerRef.current.group.rotation.y = sitRot;
       }
       playerRef.current?.setSitting(true, sitRot);
       setIsSitting(true);
@@ -595,6 +597,15 @@ export function ExplorePage() {
 
       {/* ─── LAGOS APARTMENT RESIDENCE MODAL ──────────────────────────────── */}
       {apartmentOpen && <ApartmentModal onClose={() => setApartmentOpen(false)} />}
+
+      {/* ─── MAMA BISI'S BUKA RESTAURANT INTERIOR ─────────────────────────── */}
+      {bukaOpen && <BukaInteriorModal onClose={() => setBukaOpen(false)} />}
+
+      {/* ─── OWAMBE CUBANA LOUNGE NIGHTCLUB INTERIOR ──────────────────────── */}
+      {clubOpen && <ClubInteriorModal onClose={() => setClubOpen(false)} />}
+
+      {/* ─── SILICON LAGOON TECH HUB INTERIOR ─────────────────────────────── */}
+      {techHubOpen && <TechHubInteriorModal onClose={() => setTechHubOpen(false)} />}
 
       {/* ─── SIMS SOCIAL INTERACTION MODAL (When chatting with an NPC) ────── */}
       {socialNpc && <SocialInteractionModal npc={socialNpc} onClose={() => setSocialNpc(null)} />}

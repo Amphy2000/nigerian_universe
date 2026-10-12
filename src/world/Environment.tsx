@@ -220,15 +220,15 @@ function InteractableObjects() {
   return (
     <group>
       {INTERACTABLES.filter((o) => o.type === 'bench').map((bench) => (
-        <Bench key={bench.id} position={bench.position} />
+        <Bench key={bench.id} position={bench.position} rotation={bench.sitRotation} />
       ))}
     </group>
   );
 }
 
-function Bench({ position }: { position: [number, number, number] }) {
+function Bench({ position, rotation = 0 }: { position: [number, number, number]; rotation?: number }) {
   return (
-    <group position={position}>
+    <group position={position} rotation={[0, rotation, 0]}>
       <mesh castShadow receiveShadow position={[0, 0.5, 0]}>
         <boxGeometry args={[2, 0.12, 0.6]} />
         <meshStandardMaterial color="#6b4e3a" roughness={0.7} />

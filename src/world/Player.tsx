@@ -70,11 +70,7 @@ export function Player({ keys, onNearInteractable, onArriveAtDestination, reduce
 
     // If sitting, don't move — just ease rotation
     if (sitting.current) {
-      const dr = sitRotation.current - groupRef.current.rotation.y;
-      let adj = dr;
-      while (adj > Math.PI) adj -= Math.PI * 2;
-      while (adj < -Math.PI) adj += Math.PI * 2;
-      groupRef.current.rotation.y += adj * 0.1;
+      groupRef.current.rotation.y = sitRotation.current;
       updateCamera(dt);
       return;
     }

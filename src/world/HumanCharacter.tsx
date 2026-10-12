@@ -19,6 +19,7 @@ import { useFrame } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import * as SkeletonUtils from 'three/examples/jsm/utils/SkeletonUtils.js';
+import sittingAnimationData from './sittingAnimation.json';
 
 export type AnimState = 'idle' | 'walking' | 'running' | 'sitting' | 'dancing' | 'talking';
 
@@ -121,6 +122,17 @@ export function HumanCharacter({
   // Set up Three.js AnimationMixer on clonedScene
   const mixer = useMemo(() => new THREE.AnimationMixer(clonedScene), [clonedScene]);
 
+  // Parse authentic sitting clip
+  const sittingClip = useMemo(() => {
+    try {
+      const clip = THREE.AnimationClip.parse(sittingAnimationData);
+      clip.name = 'sitting';
+      return clip;
+    } catch {
+      return null;
+    }
+  }, []);
+
   // Create AnimationActions from RPM clips
   const actions = useMemo(() => {
     if (!mixer) return null;
@@ -136,7 +148,7 @@ export function HumanCharacter({
       running: runClip ? mixer.clipAction(runClip) : null,
       dancing: danceClip ? mixer.clipAction(danceClip) : null,
       talking: talkClip ? mixer.clipAction(talkClip) : null,
-      sitting: null,
+      sitting: sittingClip ? mixer.clipAction(sittingClip) : null,
     };
 
     Object.values(map).forEach((act) => {
@@ -147,7 +159,7 @@ export function HumanCharacter({
     });
 
     return map;
-  }, [mixer, idleGltf, walkGltf, runGltf, danceGltf, talkGltf]);
+  }, [mixer, idleGltf, walkGltf, runGltf, danceGltf, talkGltf, sittingClip]);
 
   const currentActionRef = useRef<THREE.AnimationAction | null>(null);
 
@@ -159,14 +171,6 @@ export function HumanCharacter({
     stateRef.current = nextState;
     const prevAction = currentActionRef.current;
     const nextAction = actions[nextState] ?? null;
-
-    if (nextState === 'sitting') {
-      if (prevAction) {
-        prevAction.fadeOut(0.2);
-      }
-      currentActionRef.current = null;
-      return;
-    }
 
     if (nextAction && nextAction !== prevAction) {
       nextAction.reset();
@@ -313,32 +317,6 @@ export function HumanCharacter({
   // Render loop
   useFrame((_, delta) => {
     const dt = Math.min(delta, 0.05);
-
-    if (stateRef.current === 'sitting') {
-      // Procedural seated pose on bench
-      const rotateBone = (bone: THREE.Object3D | null, axis: 'x' | 'y' | 'z', offset: number, dampSpeed = 10) => {
-        if (!bone) return;
-        const base = baseRotations.get(bone);
-        if (!base) return;
-        bone.rotation[axis] = THREE.MathUtils.damp(bone.rotation[axis], base[axis] + offset, dampSpeed, dt);
-      };
-
-      if (bones.hips) {
-        bones.hips.position.y = THREE.MathUtils.damp(bones.hips.position.y, baseHipsY.current - 0.42, 10, dt);
-      }
-      rotateBone(bones.spine, 'x', -0.12);
-      rotateBone(bones.leftUpLeg, 'x', -1.4);
-      rotateBone(bones.rightUpLeg, 'x', -1.4);
-      rotateBone(bones.leftLeg, 'x', 1.45);
-      rotateBone(bones.rightLeg, 'x', 1.45);
-      rotateBone(bones.leftArm, 'x', 0.25);
-      rotateBone(bones.rightArm, 'x', 0.25);
-      rotateBone(bones.leftForearm, 'x', -0.3);
-      rotateBone(bones.rightForearm, 'x', -0.3);
-      return;
-    }
-
-    // Update mixer for mocap animation playback
     mixer.update(dt);
   });
 
